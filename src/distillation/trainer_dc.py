@@ -207,7 +207,12 @@ class TrainerDC(TrainerBase):
                                         )
                                     grad_real_list.append(grad_real)
 
-                                grad_real = torch.stack(grad_real_list).mean(0)
+                                n = len(grad_real_list)
+                                grad_real = torch.stack(grad_real_list).sum(0)
+                                if self.config.grad_noise_sigma is not None:
+                                    C = self.config.grad_clip_C if self.config.grad_clip_C is not None else 1.0
+                                    grad_real = grad_real + torch.randn_like(grad_real) * (self.config.grad_noise_sigma * C)
+                                grad_real = grad_real / n
 
                             # compute generation probability
                             batch_gm_syn = next(gm_syn_loaders[label])
