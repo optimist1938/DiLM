@@ -169,7 +169,7 @@ class DataModule:
         dataset = dataset.map(
             tokenize_fn,
             batched=True,
-            num_proc=1,
+            num_proc=None,
             desc="Tokenize datasets",
         )
 
@@ -188,7 +188,7 @@ class DataModule:
         dataset = dataset.map(
             format_keys,
             batched=False,
-            num_proc=1,
+            num_proc=None,
             desc="Set meta_keys of datasets",
         )
 
