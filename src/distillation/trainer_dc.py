@@ -200,6 +200,11 @@ class TrainerDC(TrainerBase):
                                         buffers=buffers,
                                         **batch_to_cuda(batch_gm_real["learner"]),
                                     )
+                                    if self.config.grad_clip_C is not None:
+                                        norm = grad_real.norm(2)
+                                        grad_real = grad_real * torch.clamp(
+                                            self.config.grad_clip_C / norm, max=1.0
+                                        )
                                     grad_real_list.append(grad_real)
 
                                 grad_real = torch.stack(grad_real_list).mean(0)

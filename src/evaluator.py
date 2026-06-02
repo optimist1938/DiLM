@@ -61,6 +61,7 @@ class EvaluateConfig:
     fp16: bool = False
     bf16: bool = False
     save_result_dir: str = "save/result/dir"
+    run_mia: bool = False
 
     # training config
     few_shot: bool = False
@@ -160,6 +161,11 @@ class Evaluator:
             learner.init_weights()
             results = self.train_learner(learner=learner, train_loader=train_loader)
             results = self.evaluate_learner(learner, eval_loader)
+            if self.config.run_mia:
+                member_loader = data_module.get_train_loader(
+                    batch_size=self.config.batch_size, shuffle=False, drop_last=False
+                )
+                results["mia_auc"] = self.compute_mia_auc(learner, member_loader, eval_loader)
             if verbose:
                 logger.info(f"Model[{i}]: {results}")
             results_for_dataset.append(results)
@@ -206,6 +212,39 @@ class Evaluator:
             # update parameter
             optimizer.step()
             scheduler.step()
+
+    @torch.inference_mode()
+    def compute_mia_auc(
+        self,
+        learner: LearnerModel,
+        member_loader: DataLoader,
+        nonmember_loader: DataLoader,
+    ) -> float:
+        """Loss-based MIA (Yeom et al. 2018). AUC 0.5 = no leakage, 1.0 = full leakage."""
+        learner.eval()
+
+        def collect_losses(loader: DataLoader) -> np.ndarray:
+            all_losses = []
+            for batch in loader:
+                with amp.autocast(enabled=self.use_amp, dtype=self.amp_dtype):
+                    outputs = learner(**batch_to_cuda(batch["learner"]))
+                all_losses.append(outputs.loss.cpu())
+            return torch.cat(all_losses).numpy()
+
+        member_loss = collect_losses(member_loader)
+        nonmember_loss = collect_losses(nonmember_loader)
+
+        # lower loss → more likely member → negate so higher score = member
+        scores = np.concatenate([-member_loss, -nonmember_loss])
+        labels = np.concatenate([np.ones(len(member_loss)), np.zeros(len(nonmember_loss))])
+
+        order = np.argsort(-scores)
+        labels_sorted = labels[order]
+        n_pos = labels_sorted.sum()
+        n_neg = len(labels_sorted) - n_pos
+        tpr = np.cumsum(labels_sorted) / n_pos
+        fpr = np.cumsum(1 - labels_sorted) / n_neg
+        return float(np.trapz(tpr, fpr))
 
     @torch.inference_mode()
     def evaluate_learner(

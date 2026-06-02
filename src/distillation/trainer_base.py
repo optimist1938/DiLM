@@ -49,6 +49,7 @@ class TrainConfig:
     use_generated_data: bool = True
 
     classifier_grad_only: bool = False
+    grad_clip_C: float | None = None  # per-sample real gradient L2 norm clip threshold (privacy)
 
     # repset teacher
     repset_teacher: bool = False
